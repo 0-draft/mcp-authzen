@@ -15,6 +15,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -119,6 +120,11 @@ func evaluate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult
 		return mcp.NewToolResultError(
 			"no PDP URL: set AUTHZEN_PDP_URL or pass pdp_url"), nil
 	}
+	// Constrain the outbound target so a model-supplied `pdp_url` can't be used
+	// to scan internal addresses with non-HTTP schemes or omitted hosts.
+	if u, perr := url.Parse(pdpURL); perr != nil || u.Host == "" || (u.Scheme != "http" && u.Scheme != "https") {
+		return mcp.NewToolResultError("invalid pdp_url: must be an absolute http(s) URL with a host"), nil
+	}
 
 	subject, err := parseJSONArg(req, "subject", true)
 	if err != nil {
@@ -192,8 +198,14 @@ func parseJSONArg(req mcp.CallToolRequest, name string, required bool) (json.Raw
 		}
 		return nil, nil
 	}
-	if !json.Valid([]byte(s)) {
-		return nil, fmt.Errorf("arg %q is not valid JSON", name)
+	// AuthZEN entities (subject, resource, action, context) are all JSON
+	// objects — reject arrays / scalars early instead of letting the PDP do it.
+	var v any
+	if err := json.Unmarshal([]byte(s), &v); err != nil {
+		return nil, fmt.Errorf("arg %q is not valid JSON: %w", name, err)
+	}
+	if _, ok := v.(map[string]any); !ok {
+		return nil, fmt.Errorf("arg %q must be a JSON object", name)
 	}
 	return json.RawMessage(s), nil
 }

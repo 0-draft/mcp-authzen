@@ -4,7 +4,9 @@ project_name: mcp-authzen
 
 before:
   hooks:
-    - go mod tidy
+    # `verify` checks checksums without mutating go.mod / go.sum, so a
+    # release stays bit-reproducible. CI / dev should run `go mod tidy`.
+    - go mod verify
 
 builds:
   - id: mcp-authzen
