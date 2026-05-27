@@ -2,36 +2,13 @@
 
 [![ci](https://github.com/0-draft/mcp-authzen/actions/workflows/ci.yml/badge.svg)](https://github.com/0-draft/mcp-authzen/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/0-draft/mcp-authzen.svg)](https://pkg.go.dev/github.com/0-draft/mcp-authzen)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-A [Model Context Protocol](https://modelcontextprotocol.io) server that fronts an [OpenID AuthZEN 1.0](https://openid.net/specs/authorization-api-1_0.html) Policy Decision Point (PDP).
+[MCP](https://modelcontextprotocol.io) server that fronts an [OpenID AuthZEN 1.0](https://openid.net/specs/authorization-api-1_0.html) PDP.
 
-Lets an LLM agent ask **"can subject S perform action A on resource R?"** and have the answer come from a real authorization decision point — your OPA-AuthZEN, your Topaz, your in-house PDP — instead of from the model's training data.
+Sends a `subject + resource + action + context` bundle to a real Policy Decision Point (OPA-AuthZEN, Topaz, your own) and returns the decision. Use it when "can alice delete this?" should be answered by policy code, not by the model's guess.
 
-## Tool
-
-### `authzen_evaluate`
-
-POST the bundle to the configured PDP's `/access/v1/evaluation` (or equivalent) endpoint, return the decision.
-
-| Parameter   | Required | Description                                                                                     |
-| ----------- | -------- | ----------------------------------------------------------------------------------------------- |
-| `subject`   | yes      | JSON object: `{"type": "user", "id": "alice", "properties": {...}}`                             |
-| `resource`  | yes      | JSON object: `{"type": "document", "id": "doc-1", "properties": {...}}`                         |
-| `action`    | yes      | JSON object: `{"name": "read", "properties": {...}}`                                            |
-| `context`   | no       | Free-form JSON object with runtime context (IP, time, MFA strength, etc).                       |
-| `pdp_url`   | no       | Override the default PDP URL for this call.                                                     |
-
-Returns AuthZEN's `{"decision": <bool>, "context": {...}}` as JSON.
-
-## Configuration
-
-Set the default PDP endpoint via env:
-
-```bash
-export AUTHZEN_PDP_URL=http://localhost:8181/access/v1/evaluation
-```
-
-Or pass `pdp_url` on every call. If neither is set, the tool returns an error.
+Conforms to AuthZEN 1.0 §6 (single-evaluation request/response) and §5.5 (decision entity). Batch evaluation (§7) is not yet exposed as a tool — file an issue if you need it.
 
 ## Install
 
@@ -39,9 +16,20 @@ Or pass `pdp_url` on every call. If neither is set, the tool returns an error.
 go install github.com/0-draft/mcp-authzen@latest
 ```
 
-Or grab a signed binary from the [releases page](https://github.com/0-draft/mcp-authzen/releases).
+Pre-built signed binaries are on the [releases page](https://github.com/0-draft/mcp-authzen/releases).
 
-## Use with Claude Code
+## Quickstart
+
+```bash
+# Point at a real PDP (or your local opa-authzen-plugin on :8181)
+export AUTHZEN_PDP_URL=http://localhost:8181/access/v1/evaluation
+
+# Run the smoke test (spins up an in-process fake PDP, exercises the
+# full MCP handshake, asserts the decision is forwarded correctly)
+make smoke
+```
+
+## Wire it to Claude Code
 
 ```bash
 AUTHZEN_PDP_URL=http://localhost:8181/access/v1/evaluation \
@@ -52,11 +40,11 @@ Then in a session:
 
 > Can `alice` (role=admin) `delete` `doc-42` (owner=bob)?
 
-Claude builds the AuthZEN request, calls `authzen_evaluate`, returns the PDP's verdict — auditable, deterministic, and your policy never leaves your PDP.
+The model builds the AuthZEN bundle, calls `authzen_evaluate`, returns the PDP's decision.
 
-## Use with Cursor / other MCP clients
+## Wire it to Cursor / other clients
 
-```json
+```jsonc
 {
   "mcpServers": {
     "authzen": {
@@ -67,17 +55,50 @@ Claude builds the AuthZEN request, calls `authzen_evaluate`, returns the PDP's v
 }
 ```
 
-## Test against a local PDP
+## Tool: `authzen_evaluate`
 
-Spin up [`opa-authzen-plugin`](https://github.com/kanywst/opa-authzen-plugin) (or any AuthZEN PDP) on `:8181`, then:
+| Param      | Required | Description                                                                |
+| ---------- | -------- | -------------------------------------------------------------------------- |
+| `subject`  | yes      | JSON object. AuthZEN §5.1, e.g. `{"type":"user","id":"alice"}`.            |
+| `resource` | yes      | JSON object. AuthZEN §5.2, e.g. `{"type":"doc","id":"doc-1"}`.             |
+| `action`   | yes      | JSON object. AuthZEN §5.3, e.g. `{"name":"read"}`.                         |
+| `context`  | no       | JSON object with runtime context. AuthZEN §5.4.                            |
+| `pdp_url`  | no       | Override `AUTHZEN_PDP_URL` for this call.                                  |
+
+Returns AuthZEN's `{"decision": <bool>, "context": {...}}` as JSON.
+
+## Test against opa-authzen-plugin
+
+[`kanywst/opa-authzen-plugin`](https://github.com/kanywst/opa-authzen-plugin) is a reference AuthZEN PDP built on OPA.
 
 ```bash
-AUTHZEN_PDP_URL=http://localhost:8181/access/v1/evaluation mcp-authzen
+# In one terminal — start the PDP on :8181
+git clone https://github.com/kanywst/opa-authzen-plugin
+cd opa-authzen-plugin && make run
+
+# In another — wire mcp-authzen
+export AUTHZEN_PDP_URL=http://localhost:8181/access/v1/evaluation
+mcp-authzen
 ```
 
-## Verifying a release
+## Layout
 
-Each release ships a `cosign`-signed checksum file (keyless, Sigstore via GitHub OIDC) and a CycloneDX SBOM. To verify before installing:
+Flat by design. A single-binary MCP server with one tool does not need
+`cmd/`, `internal/`, or `pkg/`. When batch (`/access/v1/evaluations`) or
+the search APIs (§8) land, they get sibling files, not subpackages.
+
+```text
+.
+├── main.go         # server bootstrap + tool registration
+├── main_test.go    # httptest-driven PDP round-trips
+├── scripts/smoke.sh
+├── .goreleaser.yml
+└── .github/
+```
+
+## Verify a release
+
+Releases ship a `cosign`-signed checksum file (Sigstore keyless via GitHub OIDC) and a CycloneDX SBOM per archive.
 
 ```bash
 TAG=v0.1.0
