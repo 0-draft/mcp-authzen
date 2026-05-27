@@ -154,6 +154,47 @@ func TestEvaluate_BearerToken_PreservesPrefix(t *testing.T) {
 	}
 }
 
+func TestEvaluate_RejectsNonHTTPScheme(t *testing.T) {
+	res := callEval(t, map[string]any{
+		"pdp_url":  "file:///etc/passwd",
+		"subject":  `{"id":"a"}`,
+		"resource": `{"id":"r"}`,
+		"action":   `{"name":"x"}`,
+	})
+	if !res.IsError {
+		t.Fatal("expected error for non-http(s) scheme")
+	}
+}
+
+func TestEvaluate_RejectsRelativeURL(t *testing.T) {
+	res := callEval(t, map[string]any{
+		"pdp_url":  "/local/path",
+		"subject":  `{"id":"a"}`,
+		"resource": `{"id":"r"}`,
+		"action":   `{"name":"x"}`,
+	})
+	if !res.IsError {
+		t.Fatal("expected error for relative URL (missing host)")
+	}
+}
+
+func TestEvaluate_RejectsArraySubject(t *testing.T) {
+	pdp := fakePDP(t, true, nil)
+	defer pdp.Close()
+	res := callEval(t, map[string]any{
+		"pdp_url":  pdp.URL,
+		"subject":  `["alice"]`,
+		"resource": `{"id":"r"}`,
+		"action":   `{"name":"x"}`,
+	})
+	if !res.IsError {
+		t.Fatal("expected error: subject must be a JSON object")
+	}
+	if !strings.Contains(resultText(t, res), "must be a JSON object") {
+		t.Fatalf("expected object-only error in: %s", resultText(t, res))
+	}
+}
+
 func TestEvaluate_PDP5xx(t *testing.T) {
 	pdp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "boom", http.StatusInternalServerError)
