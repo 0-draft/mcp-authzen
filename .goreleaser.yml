@@ -13,6 +13,7 @@ builds:
     goos:
       - darwin
       - linux
+      - windows
     goarch:
       - amd64
       - arm64
@@ -22,7 +23,10 @@ builds:
       - -s -w -X main.version={{.Version}}
 
 archives:
-  - formats:
+  - format_overrides:
+      - goos: windows
+        formats: [zip]
+    formats:
       - tar.gz
     name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}"
     files:

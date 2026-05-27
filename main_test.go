@@ -110,6 +110,50 @@ func TestEvaluate_BadJSON(t *testing.T) {
 	}
 }
 
+func TestEvaluate_BearerToken(t *testing.T) {
+	t.Setenv("AUTHZEN_PDP_TOKEN", "s3cret")
+
+	var gotAuth string
+	pdp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(authzenResponse{Decision: true})
+	}))
+	defer pdp.Close()
+
+	_ = callEval(t, map[string]any{
+		"pdp_url":  pdp.URL,
+		"subject":  `{"id":"a"}`,
+		"resource": `{"id":"r"}`,
+		"action":   `{"name":"x"}`,
+	})
+	if gotAuth != "Bearer s3cret" {
+		t.Fatalf("Authorization header = %q, want %q", gotAuth, "Bearer s3cret")
+	}
+}
+
+func TestEvaluate_BearerToken_PreservesPrefix(t *testing.T) {
+	t.Setenv("AUTHZEN_PDP_TOKEN", "Bearer already-prefixed")
+
+	var gotAuth string
+	pdp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotAuth = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(authzenResponse{Decision: true})
+	}))
+	defer pdp.Close()
+
+	_ = callEval(t, map[string]any{
+		"pdp_url":  pdp.URL,
+		"subject":  `{"id":"a"}`,
+		"resource": `{"id":"r"}`,
+		"action":   `{"name":"x"}`,
+	})
+	if gotAuth != "Bearer already-prefixed" {
+		t.Fatalf("Authorization header = %q; expected raw passthrough", gotAuth)
+	}
+}
+
 func TestEvaluate_PDP5xx(t *testing.T) {
 	pdp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "boom", http.StatusInternalServerError)

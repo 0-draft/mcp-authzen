@@ -24,6 +24,10 @@ Pre-built signed binaries are on the [releases page](https://github.com/0-draft/
 # Point at a real PDP (or your local opa-authzen-plugin on :8181)
 export AUTHZEN_PDP_URL=http://localhost:8181/access/v1/evaluation
 
+# Optional: PDP behind auth. Bare values are auto-prefixed with "Bearer ";
+# values starting with "Bearer " or "Basic " pass through verbatim.
+# export AUTHZEN_PDP_TOKEN=eyJhbGciOi...
+
 # Run the smoke test (spins up an in-process fake PDP, exercises the
 # full MCP handshake, asserts the decision is forwarded correctly)
 make smoke

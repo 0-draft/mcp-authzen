@@ -150,6 +150,12 @@ func evaluate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Accept", "application/json")
+	if token := os.Getenv("AUTHZEN_PDP_TOKEN"); token != "" {
+		if !strings.HasPrefix(token, "Bearer ") && !strings.HasPrefix(token, "Basic ") {
+			token = "Bearer " + token
+		}
+		httpReq.Header.Set("Authorization", token)
+	}
 
 	res, err := httpClient.Do(httpReq)
 	if err != nil {
@@ -157,7 +163,9 @@ func evaluate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult
 	}
 	defer func() { _ = res.Body.Close() }()
 
-	raw, err := io.ReadAll(res.Body)
+	// Cap the response at 1 MiB; AuthZEN responses are tiny and we don't want
+	// a misbehaving PDP to OOM the server.
+	raw, err := io.ReadAll(io.LimitReader(res.Body, 1<<20))
 	if err != nil {
 		return mcp.NewToolResultError("read PDP response: " + err.Error()), nil
 	}
@@ -184,9 +192,8 @@ func parseJSONArg(req mcp.CallToolRequest, name string, required bool) (json.Raw
 		}
 		return nil, nil
 	}
-	var v any
-	if err := json.Unmarshal([]byte(s), &v); err != nil {
-		return nil, fmt.Errorf("arg %q is not valid JSON: %w", name, err)
+	if !json.Valid([]byte(s)) {
+		return nil, fmt.Errorf("arg %q is not valid JSON", name)
 	}
 	return json.RawMessage(s), nil
 }
