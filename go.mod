@@ -2,7 +2,7 @@ module github.com/0-draft/mcp-authzen
 
 go 1.26.4
 
-require github.com/mark3labs/mcp-go v0.54.1
+require github.com/mark3labs/mcp-go v0.55.0
 
 require (
 	github.com/google/jsonschema-go v0.4.2 // indirect
