@@ -1,5 +1,11 @@
 # mcp-authzen
 
+> **Moved.** This server now lives in [`kanywst/mcp-opa-authz`](https://github.com/kanywst/mcp-opa-authz), merged with `mcp-opa` into a single binary that exposes both `authzen_evaluate` and `evaluate_policy`. This repository's commit history is preserved there. This repo is archived and read-only.
+>
+> ```bash
+> go install github.com/kanywst/mcp-opa-authz@latest
+> ```
+
 [![ci](https://github.com/0-draft/mcp-authzen/actions/workflows/ci.yml/badge.svg)](https://github.com/0-draft/mcp-authzen/actions/workflows/ci.yml)
 [![Go Reference](https://pkg.go.dev/badge/github.com/0-draft/mcp-authzen.svg)](https://pkg.go.dev/github.com/0-draft/mcp-authzen)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
